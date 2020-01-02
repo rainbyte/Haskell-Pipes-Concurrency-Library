@@ -42,13 +42,14 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.STM (atomically, STM, mkWeakTVar, newTVarIO, readTVar)
 import Control.Exception (bracket)
 import Control.Monad (when,void, MonadPlus(..))
+import Control.Monad.STM.Class (MonadSTM(..), liftSTM)
 import Data.Functor.Contravariant (Contravariant(contramap))
 import Data.Functor.Contravariant.Divisible (
     Divisible(divide, conquer), Decidable(lose, choose))
 import Data.Monoid (Monoid(mempty, mappend))
 import Data.Semigroup
 import Data.Void (absurd)
-import Pipes (MonadIO(liftIO), yield, await, Producer', Consumer')
+import Pipes (yield, await, Producer', Consumer')
 import Prelude hiding (read)
 import System.Mem (performGC)
 
@@ -146,14 +147,14 @@ type Mailbox a = (Output a, Input a)
 
     'fromMailbox' terminates when the 'Mailbox' source of values is exhausted.
 -}
-fromMailbox :: (MonadIO m) => Mailbox a -> Producer' a m ()
+fromMailbox :: (Monad m, MonadSTM m) => Mailbox a -> Producer' a m ()
 fromMailbox = fromInput . snd
 
 {-| Convert a 'Mailbox' to a 'Pipes.Consumer'
 
     'toMailbox' terminates when the 'Mailbox' sink of values is exhausted.
 -}
-toMailbox :: (MonadIO m) => Mailbox a -> Consumer' a m ()
+toMailbox :: (Monad m, MonadSTM m) => Mailbox a -> Consumer' a m ()
 toMailbox = toOutput . fst
 
 {-| Put a value in a 'Mailbox'
@@ -174,12 +175,12 @@ recv' = recv . snd
 
     'toOutput' terminates when the 'Output' is exhausted.
 -}
-toOutput :: (MonadIO m) => Output a -> Consumer' a m ()
+toOutput :: (Monad m, MonadSTM m) => Output a -> Consumer' a m ()
 toOutput output = loop
   where
     loop = do
         a     <- await
-        alive <- liftIO $ S.atomically $ send output a
+        alive <- liftSTM $ send output a
         when alive loop
 {-# INLINABLE toOutput #-}
 
@@ -187,11 +188,11 @@ toOutput output = loop
 
     'fromInput' terminates when the 'Input' is exhausted.
 -}
-fromInput :: (MonadIO m) => Input a -> Producer' a m ()
+fromInput :: (Monad m, MonadSTM m) => Input a -> Producer' a m ()
 fromInput input = loop
   where
     loop = do
-        ma <- liftIO $ S.atomically $ recv input
+        ma <- liftSTM $ recv input
         case ma of
             Nothing -> return ()
             Just a  -> do
